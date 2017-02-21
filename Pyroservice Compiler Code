@@ -1,0 +1,497 @@
+Function Save()
+    
+    ' Saves worksheets in pyroservice new submissions with a name specified by the user
+    ' Includes name of person that submitted it in order to help chasing up issues
+    ' Uses UserName, RemoveEmpty and Clear functions
+    ' Rhys 07/10/2015
+    
+    Dim plate
+    
+    Application.ScreenUpdating = False
+    
+    Call UserName(Name)
+              
+    saveQ = MsgBox("Select yes to save worksheet under it's number" & vbNewLine & "Select no to save under a custom number" & vbNewLine & "", vbYesNo, "Custom name?")
+    If saveQ = vbYes Then
+        Range("A2").Select
+        plate = Selection.Text
+        Worksheets("Q96 TEMPLATE").Visible = True
+        Sheets("Q96 TEMPLATE").Select
+        Range("A1:C97").Select
+        Selection.Copy
+        Workbooks.Add
+        ActiveSheet.Name = plate
+        Range("A1:C97").Select
+        Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+        
+        Call RemoveEmpty
+    
+        ActiveWorkbook.SaveAs FileName:="M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\New Submissions\" & plate & "_" & Name & ".csv", FileFormat _
+            :=xlCSV, Password:="", writerespassword:="", ReadOnlyRecommended:=False, CreateBackup:=False
+        ActiveWorkbook.Close SaveChanges:=True
+        Sheets("INPUT").Select
+        Worksheets("Q96 TEMPLATE").Visible = False
+        Call Clear
+        Application.ScreenUpdating = True
+        MsgBox "Saved in Pyrosequencing New Submissions as: " & plate & "_" & Name, vbOKOnly + vbInformation, "Save sucessful"
+    Else
+        Message = "Enter the filename to save worksheet/worksheets" & vbNewLine & "For Example: K15-0001 or 15-1234,35,36"
+        Title = "Enter Filename"
+        plate = InputBox(Message, Title, Default, 400, 400)
+        Worksheets("Q96 TEMPLATE").Visible = True
+        Sheets("Q96 TEMPLATE").Select
+        Range("A1:C97").Select
+        Selection.Copy
+        Workbooks.Add
+        ActiveSheet.Name = plate
+        Range("A1:C97").Select
+        Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+        
+        Call RemoveEmpty
+    
+        ActiveWorkbook.SaveAs FileName:="M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\New Submissions\" & plate & "_" & Name & ".csv", FileFormat _
+            :=xlCSV, Password:="", writerespassword:="", ReadOnlyRecommended:=False, CreateBackup:=False
+        ActiveWorkbook.Close SaveChanges:=True
+        Sheets("INPUT").Select
+        Worksheets("Q96 TEMPLATE").Visible = False
+        Call Clear
+        Application.ScreenUpdating = True
+        MsgBox "Saved in Pyrosequencing New Submissions as: " & plate & "_" & Name, vbOKOnly + vbInformation, "Save sucessful"
+        'If Message = vbYes Then
+
+        '    Else
+        'End If
+    End If
+    
+End Function
+
+Function Compile()
+
+    ' Searches new submissions and autopyro setup (if selected) then compiles if there are files present
+    ' Uses FileImport function
+    ' Rhys 08/10/2015
+
+    Application.ScreenUpdating = False
+    Dim filePath, filePathTwo As String
+
+    filePath = Dir("M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\New Submissions\Autopyro setup\" & "*.csv")
+    filePathTwo = Dir("M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\New Submissions\" & "*.csv")
+    
+    If filePath <> "" Or filePathTwo <> "" Then
+        importQ = MsgBox("Do you want to import the A-Pyro plate?" & vbNewLine & "Select no for just the manuals" & vbNewLine & "", vbYesNo, "Import Select")
+        If importQ = vbYes Then
+            ' Change filepaths to directory level and import A-pyro and manual plates
+            filePath = "M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\New Submissions\Autopyro setup\"
+            filePathTwo = "M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\New Submissions\"
+            Call FileImport(filePath, filePathTwo)
+        Else
+            ' Change filepaths to directory level and import just manual plates
+            filePathTwo = "M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\New Submissions\"
+            Call FileImport(filePath, filePathTwo)
+        End If
+        Application.ScreenUpdating = True
+    Else
+        MsgBox "There are no files available to compile!", vbOKOnly + vbInformation, "Nothing to compile"
+    End If
+
+End Function
+
+Sub FileImport(filePath, filePathTwo)
+
+    ' Imports files from new submissions and autopyro setup dependant on arguments passed
+    ' Compiles joint plate, creates directories and writes to logfile.
+    ' Uses UserName and Paste function
+    ' Rhys 08/10/2015
+    
+    Dim fileCheck, files, filesTwo, current, folder, saveName, list As String
+    Dim rowCount, totalCount, beads, binding, water As Integer
+    Dim kPlate
+    Dim total As Boolean
+    Dim saveNameList() As String
+    totalCount = 1
+    
+    Call UserName(Name)
+
+    Application.DisplayAlerts = False
+    Workbooks.Open ("M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\Log\PyroLog.xls")
+    Workbooks("PyroLog.xls").Activate
+    Set insert = Range("B" & Rows.Count).End(xlUp).Offset(1)
+    insert.Select
+    Set Cell = insert.Offset(0, -1)
+    kPlate = Cell.Text
+    Set Cell = insert
+    Cell.Select
+    Cell.Value = Name
+    Set Cell = insert.Offset(0, 1)
+    Cell.Select
+    Cell.Value = Now
+    
+    MkDir "M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\Compiled Plates\2017\" & kPlate
+    folder = "M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\Compiled Plates\2017\" & kPlate & "\"
+    Workbooks.Open ("M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\Q96 template.csv")
+    ActiveSheet.Name = kPlate
+    
+    total = False
+
+    While total = False
+        ' This deals with filepath one, it will always be an A-pyro plate and therefore never more than 96 wells.
+        files = Dir(filePath & "*.csv")
+        If totalCount < 96 Then
+            Do While files <> ""
+                Workbooks.Open FileName:=filePath & files
+                files = Dir
+                ' -1 per file because header row
+                rowCount = ActiveSheet.UsedRange.Rows.Count
+                rowCount = rowCount - 1
+                totalCount = totalCount + rowCount
+                
+                If totalCount > 96 Then
+                    ActiveWorkbook.Close
+                    total = True
+              
+                Else
+                    saveName = ActiveWorkbook.Name
+                    ActiveWorkbook.SaveAs FileName:=folder & saveName, FileFormat _
+                    :=xlCSV, Password:="", writerespassword:="", ReadOnlyRecommended:= _
+                    False, CreateBackup:=False
+                
+                    Call Paste(kPlate)
+                    
+                    Workbooks(saveName).Activate
+                    Application.DisplayAlerts = False
+                    ActiveWorkbook.Close SaveChanges:=True
+                    Kill (filePath & saveName)
+                    If (saveName Like "*Hamilton*") Then
+                    saveNameList() = Split(saveName, " ")
+                    Else
+                    saveNameList() = Split(saveName, "_")
+                    End If
+                    saveName = saveNameList(0)
+                    list = list & saveName & "," & " "
+                    
+                End If
+            Loop
+        Else
+        End If
+                 
+        ' This deals with manual PCR's and manual PCR's added after pyro plate, includes logic to deal with >96 wells.
+        ' Will scan through worksheets and fill the plate whenever possible
+        filesTwo = Dir(filePathTwo & "*.csv")
+        If totalCount < 96 Then
+            Do While filesTwo <> ""
+                Workbooks.Open FileName:=filePathTwo & filesTwo
+                filesTwo = Dir
+                ' -1 per file because header row
+                rowCount = ActiveSheet.UsedRange.Rows.Count
+                rowCount = rowCount - 1
+                totalCount = totalCount + rowCount
+
+                If totalCount > 96 Then
+                    ActiveWorkbook.Close
+                    totalCount = totalCount - rowCount
+                Else
+                    saveName = ActiveWorkbook.Name
+                    ActiveWorkbook.SaveAs FileName:=folder & saveName, FileFormat _
+                    :=xlCSV, Password:="", writerespassword:="", ReadOnlyRecommended:= _
+                    False, CreateBackup:=False
+           
+                    Call Paste(kPlate)
+                    
+                    Workbooks(saveName).Activate
+                    Application.DisplayAlerts = False
+                    ActiveWorkbook.Close SaveChanges:=True
+                    Kill (filePathTwo & saveName)
+                    If (saveName Like "*Hamilton*") Then
+                    saveNameList() = Split(saveName, " ")
+                    Else
+                    saveNameList() = Split(saveName, "_")
+                    End If
+                    saveName = saveNameList(0)
+                    list = list & saveName & "," & " "
+                    
+                End If
+            Loop
+        Else
+        End If
+        total = True
+    Wend
+        
+    Workbooks("PyroLog.xls").Activate
+    Set Cell = insert.Offset(0, 2)
+    Cell.Select
+    Cell.Value = list
+    Set Cell = insert.Offset(0, 3)
+    Cell.Select
+    ' Remove additional 1 count applied at beginning to ensure no +96 well overflow
+    totalCount = totalCount - 1
+    Cell.Value = totalCount
+    ActiveWorkbook.SaveAs FileName:="M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\Log\PyroLog.xls", FileFormat _
+        :=xlWorkbookNormal, Password:="", writerespassword:="", ReadOnlyRecommended:=False, CreateBackup:=True
+    ActiveWorkbook.SaveAs FileName:="M:\Pyrosequencing\Pyrosequencing Service\PCR & PYRO spreadsheets\PyroLogForUsers.xls", FileFormat _
+        :=xlWorkbookNormal, Password:="", writerespassword:="", ReadOnlyRecommended:=False, CreateBackup:=False
+    ActiveWorkbook.Close SaveChanges:=True
+    Application.DisplayAlerts = True
+    
+    'calculate mix volumes (+6 wells for overage)
+    totalCount = totalCount + 6
+    beads = totalCount * 2
+    binding = totalCount * 40
+    water = totalCount * 13
+    
+    Workbooks("Q96 template.csv").Activate
+    Sheets(kPlate).Select
+    Call RemoveEmpty
+    ActiveWorkbook.SaveAs FileName:=folder & kPlate, FileFormat _
+        :=xlCSV, Password:="", writerespassword:="", ReadOnlyRecommended:= _
+        False, CreateBackup:=False
+    ActiveWorkbook.Close SaveChanges:=True
+    MsgBox "Saved in PCR & PYRO spreadsheets\Compiled Plates\2017 as: " & kPlate & vbNewLine & vbNewLine & "Mix Volumes for this plate: " & vbNewLine & _
+    "Beads: " & beads & vbNewLine & "Binding Buffer: " & binding & vbNewLine & "Water: " & water & vbNewLine, vbOKOnly + vbInformation, "Save sucessful"
+
+End Sub
+
+
+Sub RemoveEmpty()
+    
+    ' Removes blank rows prior to saving
+    ' Rhys 08/10/2015
+    
+    Last = Cells(Rows.Count, "C").End(xlUp).Row
+    For i = Last To 1 Step -1
+        If (Cells(i, "C").Value) = "0" Then
+            Cells(i, "A").EntireRow.Delete
+        End If
+    Next
+    Columns("B").SpecialCells(xlCellTypeBlanks).EntireRow.Delete
+End Sub
+
+Sub Paste(kPlate)
+
+    ' Selects data in newest open file, pastes into template file in next available row so long as there is space
+    ' Rhys 08/10/2015
+    
+    Dim insert, first As Range
+    Dim check As String
+    Dim done As Boolean
+        
+    Range("B2:C97").Select
+    Selection.Copy
+    Workbooks("Q96 template.csv").Activate
+    Sheets(kPlate).Select
+    done = False
+    
+    While done = False
+        Set insert = Range("B" & Rows.Count).End(xlUp).Offset(1)
+        insert.Select
+        Set first = insert.Offset(0, -1)
+        check = first.Text
+        If check = "A1" Or check = "A2" Or check = "A3" Or check = "A4" Or check = "A5" Or check = "A6" _
+        Or check = "A7" Or check = "A8" Or check = "A9" Or check = "A10" Or check = "A11" Or check = "A12" Then
+            Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+        done = True
+        Else
+        insert.Value = "-"
+        Set insert = insert.Offset(0, 1)
+        insert.Value = "-"
+        End If
+    Wend
+
+End Sub
+
+Sub ImportWorksheet()
+
+    ' Imports worksheet data from Shire and sorts into correct order (A1, B1 etc)
+    ' Uses Sort and Clear functions
+    ' Rhys 22/10/2015
+
+    Dim Worksheet As String
+    
+    Application.ScreenUpdating = False
+    Worksheets("IMPORT").Visible = True
+    
+    Call Clear
+
+    Message = "Enter a  shire worksheet number" & vbNewLine & "For Example: 15-12345"
+    Title = "Enter worksheet"
+    Worksheet = InputBox(Message, Title, Default, 400, 400)
+            
+    Application.ScreenUpdating = True
+    Sheets("IMPORT").Range("E1").Value = Worksheet
+    SendKeys (ENTER)
+    ActiveWorkbook.Connections("PyroWorksheets").Refresh
+    ' delay doesnt seem to be needed, but kept commented out in code as
+    ' may be needed on some super slow PC's?
+    'Application.Wait (Now + TimeValue("0:00:01"))
+    Application.ScreenUpdating = False
+    
+    Call Sort
+    
+    Worksheets("IMPORT").Visible = False
+    Application.ScreenUpdating = True
+    'If Message = vbYes Then
+
+    'Else
+        
+    'End If
+
+End Sub
+
+Sub Sort()
+
+    ' Sorts the data imputed into IMPORT tab by query then pastes it into the relevant columns assigning proper Assay
+    ' Uses Sorting function
+    ' Rhys 22/10/2015
+    
+    Dim fill As Range
+    Dim test() As String
+    Dim assay() As String
+    Dim firstNameAr() As String
+    Dim secondNameAr() As String
+    Dim test_string, assay_string, fullName, firstName, secondName As String
+
+    ' This is done in this way because there's no specific string array in VBA
+    ' Opted to work around by creating a string then assign to an array by splitting the string, simples!
+    assay_string = "K-ras 12&13 currentassay,K-ras 61_currentassay,K-ras 146_current,NRAS codon 12&13 v1 pyro,NRAS codon 61v1 pyro,EGFR_Ex18_Current,EGFR_T790M_Current,EGFR_Ex20_Current(20A),EGFR_Exon20B,EGFR_Ex21_Current(21A),EGFR_Exon21pyroL861Q(21B),BRAF 599 to 601 final v3,PIK3CA_Ex9v2 pyro trial,PIK3CA_Ex20,Arg1441v2,Arg1628Pro,Gly2019rev,Gly2385Arg,Tyr1699Cys,MTRNR1_a1555g_Current,m.3460G-A,m.11778G-A,m.14484T-C,MLH1 meth v2,mgmt pyro assay Version 1,IDH1 assay 10Nov16,IDH2v1 assay 09Nov16"
+    assay() = Split(assay_string, ",")
+    test_string = "K-RAS codon12&13,K-RAS codon61,K-RAS codon146 pyro,NRAS codon 12&13 pyro,NRAS Codon 61 pyro,EGFR Ex18,EGFR-T790M-pyr,EGFR Ex20A,EGFR Ex20B,EGFR Ex21A,EGFR Ex21B,BRAF Ex15 pyro,PIK3CA Exon 9,PIK3CA Exon 20,LRRK2 R1441H pyro,LRRK2 R1628P pyro,LRRK2 G2019S pyro,LRRK2 G2385R pyro,LRRK2 Y1699C pyro,MTRNR1 m.1555A>G pyro,MTND1 m.3460G>A,MTND4 m.11778G>A,MTND6 m.14484T>C,MLH1-methylation pyro,MGMT-methylation pyro,IDH1 R132,IDH2 R172"
+    test() = Split(test_string, ",")
+    
+    Sheets("IMPORT").Select
+    
+    Last = Cells(Rows.Count, "C").End(xlUp).Row
+    For i = Last To 1 Step -1
+        If (Cells(i, "B").Value) = "" Then
+            Cells(i, "A").EntireRow.Delete
+        End If
+    Next
+    Call Sorting
+    
+    ' paste labno's
+    Range("B2:B97").Select
+    Selection.Copy
+    Sheets("Input").Select
+    Range("C2:C97").Select
+    Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+        
+    ' paste initials
+    Sheets("IMPORT").Select
+    Range("D2:D97").Select
+    Selection.Copy
+    Sheets("Input").Select
+    Range("D2:D97").Select
+    Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+ 
+    ' paste Worksheet number
+    Sheets("IMPORT").Select
+    Range("E1").Select
+    Selection.Copy
+    Sheets("Input").Select
+    Set fill = Range("C2:C" & Range("C" & Rows.Count).End(xlUp).Row).Offset(0, -2)
+    fill.Select
+    Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+    
+    ' fill Pyro assay and paste
+    Sheets("IMPORT").Select
+    testCheck = Cells(Rows.Count, "C").End(xlUp).Row
+    For i = testCheck To 1 Step -1
+        For ii = 0 To UBound(test)
+        If (Cells(i, "C").Value) = test(ii) Then
+            Cells(i, "C").Value = assay(ii)
+        End If
+        Next
+    Next
+    Range("C2:C97").Select
+    Selection.Copy
+    Sheets("Input").Select
+    Set fill = Range("C2:C" & Range("C" & Rows.Count).End(xlUp).Row).Offset(0, 3)
+    fill.Select
+    Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+    
+End Sub
+
+Sub Sorting()
+    
+    ' Sorts all samples against position number
+    ' Rhys 22/10/2015
+
+    Columns("A:A").Select
+    ActiveWorkbook.Worksheets("IMPORT").Sort.SortFields.Clear
+    ActiveWorkbook.Worksheets("IMPORT").Sort.SortFields.Add Key:=Range("A2:A97") _
+        , SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
+    With ActiveWorkbook.Worksheets("IMPORT").Sort
+        .SetRange Range("A1:C49")
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+End Sub
+
+Sub Clear()
+
+    ' Clears columns A, C and F in Input
+    ' Rhys 22/10/15
+    
+    Sheets("Input").Select
+    Range("A2:A97").Select
+    Selection.Clear
+    Range("C2:C97").Select
+    Selection.Clear
+    Range("D2:D97").Select
+    Selection.Clear
+    Range("F2:F97").Select
+    Selection.Clear
+    Range("A2").Select
+    
+End Sub
+
+Sub UserName(Name)
+
+    ' Gets UserName from NADEX logon and returns the String "Name"
+    ' Currently only has those that might be likely to submit anything
+    ' Rhys 22/10/2015
+
+    Name = LCase(Environ("UserName"))
+    If Name = "rh086986" Then
+        Name = "Rhys"
+    ElseIf Name = "vi092922" Then
+        Name = "Vicky"
+    ElseIf Name = "da095319" Then
+        Name = "Daisy"
+    ElseIf Name = "ma092872" Then
+        Name = "Margarita"
+    ElseIf Name = "mi087229" Then
+        Name = "Michelle"
+    ElseIf Name = "ai082790" Then
+        Name = "Aislinn"
+    ElseIf Name = "ki167518" Then
+        Name = "Kirsty"
+    ElseIf Name = "la087936" Then
+        Name = "LauraFares"
+    ElseIf Name = "ia089822" Then
+        Name = "Ian"
+    ElseIf Name = "he092731" Then
+        Name = "Helen"
+    ElseIf Name = "ha092681" Then
+        Name = "Hazel"
+    ElseIf Name = "rh083787" Then
+        Name = "Rhianedd"
+    ElseIf Name = "id089845" Then
+        Name = "Id"
+    ElseIf Name = "la086380" Then
+        Name = "LauraFerguson"
+    ElseIf Name = "ju089315" Then
+        Name = "Justyna"
+    ElseIf Name = "le093105" Then
+        Name = "Leanne"
+    ElseIf Name = "ro094113" Then
+        Name = "Robert"
+    ElseIf Name = "ro090332" Then
+        Name = "Rogan"
+    ElseIf Name = "na092767" Then
+        Name = "Natalia"
+    Else: Name = "Unknown"
+        End If
+
+End Sub
